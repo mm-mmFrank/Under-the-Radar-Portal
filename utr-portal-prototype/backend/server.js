@@ -21,19 +21,15 @@ app.use(express.json());
 // ---------------------------------------------------------------------
 const DRIVE_ROOT_FOLDER_ID = process.env.DRIVE_ROOT_FOLDER_ID || "1R90XPNM35sHaLLHuXtO5U5Qh6FsPXf5H";
 
-let driveAuth;
-try {
-  const decoded = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64, "base64").toString("utf-8");
-  const credentials = JSON.parse(decoded);
-  driveAuth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ["https://www.googleapis.com/auth/drive"]
-  });
-} catch (err) {
-  console.error("Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON_BASE64:", err.message);
-}
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_OAUTH_CLIENT_ID,
+  process.env.GOOGLE_OAUTH_CLIENT_SECRET
+);
+oauth2Client.setCredentials({
+  refresh_token: process.env.GOOGLE_OAUTH_REFRESH_TOKEN
+});
 
-const drive = google.drive({ version: "v3", auth: driveAuth });
+const drive = google.drive({ version: "v3", auth: oauth2Client });
 
 // Cache of participantId -> their Drive subfolder ID, so we don't
 // search/create it on every single upload within the same process lifetime.
