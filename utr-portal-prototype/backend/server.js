@@ -2,8 +2,9 @@ const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
-const fs = require("fs");
 const { Pool } = require("pg");
+const { google } = require("googleapis");
+const { Readable } = require("stream");
 
 const app = express();
 const PORT = 3001;
@@ -12,19 +13,71 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 app.use(cors());
 app.use(express.json());
 
-const uploadDirectory = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDirectory)) fs.mkdirSync(uploadDirectory, { recursive: true });
+// ---------------------------------------------------------------------
+// Google Drive setup
+// GOOGLE_SERVICE_ACCOUNT_JSON must contain the full contents of the
+// downloaded service account JSON key, pasted as a single-line env var.
+// DRIVE_ROOT_FOLDER_ID is the folder shared with that service account.
+// ---------------------------------------------------------------------
+const DRIVE_ROOT_FOLDER_ID = process.env.DRIVE_ROOT_FOLDER_ID || "1R90XPNM35sHaLLHuXtO5U5Qh6FsPXf5H";
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDirectory),
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueName + path.extname(file.originalname));
+let driveAuth;
+try {
+  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+  driveAuth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ["https://www.googleapis.com/auth/drive"]
+  });
+} catch (err) {
+  console.error("Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:", err.message);
+}
+
+const drive = google.drive({ version: "v3", auth: driveAuth });
+
+// Cache of participantId -> their Drive subfolder ID, so we don't
+// search/create it on every single upload within the same process lifetime.
+const folderCache = new Map();
+
+async function getOrCreateParticipantFolder(participantId) {
+  if (folderCache.has(participantId)) {
+    return folderCache.get(participantId);
   }
-});
 
+  // Look for an existing subfolder with this name inside the root folder.
+  const safeName = participantId.replace(/'/g, "\\'");
+  const searchRes = await drive.files.list({
+    q: `'${DRIVE_ROOT_FOLDER_ID}' in parents and name = '${safeName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id, name)",
+    spaces: "drive"
+  });
+
+  if (searchRes.data.files && searchRes.data.files.length > 0) {
+    const folderId = searchRes.data.files[0].id;
+    folderCache.set(participantId, folderId);
+    return folderId;
+  }
+
+  // Not found — create it.
+  const createRes = await drive.files.create({
+    requestBody: {
+      name: participantId,
+      mimeType: "application/vnd.google-apps.folder",
+      parents: [DRIVE_ROOT_FOLDER_ID]
+    },
+    fields: "id"
+  });
+
+  const folderId = createRes.data.id;
+  folderCache.set(participantId, folderId);
+  return folderId;
+}
+
+// ---------------------------------------------------------------------
+// Multer: hold the file in memory instead of writing to local disk,
+// since it's going straight to Drive.
+// ---------------------------------------------------------------------
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype && file.mimetype.startsWith("video/")) cb(null, true);
@@ -60,28 +113,51 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-app.post("/api/upload", upload.single("video"), (req, res) => {
+app.post("/api/upload", upload.single("video"), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: "No video was uploaded" });
   }
 
-  console.log("Video received:", {
-    participantId: req.body.participantId,
-    promptId: req.body.promptId,
-    filename: req.file.filename
-  });
+  const participantId = req.body.participantId || "unknown-participant";
+  const promptId = req.body.promptId || "unspecified-prompt";
 
-  res.json({
-    success: true,
-    message: "Video uploaded successfully",
-    filename: req.file.filename,
-    originalName: req.file.originalname,
-    size: req.file.size,
-    url: `/uploads/${encodeURIComponent(req.file.filename)}`
-  });
+  try {
+    const folderId = await getOrCreateParticipantFolder(participantId);
+
+    const uniqueName = `${promptId}-${Date.now()}${path.extname(req.file.originalname)}`;
+
+    const driveRes = await drive.files.create({
+      requestBody: {
+        name: uniqueName,
+        parents: [folderId]
+      },
+      media: {
+        mimeType: req.file.mimetype,
+        body: Readable.from(req.file.buffer)
+      },
+      fields: "id, webViewLink"
+    });
+
+    console.log("Video uploaded to Drive:", {
+      participantId,
+      promptId,
+      driveFileId: driveRes.data.id
+    });
+
+    res.json({
+      success: true,
+      message: "Video uploaded successfully",
+      filename: uniqueName,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      driveFileId: driveRes.data.id,
+      url: driveRes.data.webViewLink || null
+    });
+  } catch (err) {
+    console.error("Drive upload failed:", err);
+    res.status(500).json({ success: false, message: "Upload to Drive failed" });
+  }
 });
-
-app.use("/uploads", express.static(uploadDirectory));
 
 app.use((err, req, res, next) => {
   console.error(err);
