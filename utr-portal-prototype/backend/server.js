@@ -23,13 +23,14 @@ const DRIVE_ROOT_FOLDER_ID = process.env.DRIVE_ROOT_FOLDER_ID || "1R90XPNM35sHaL
 
 let driveAuth;
 try {
-  const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+  const decoded = Buffer.from(process.env.GOOGLE_SERVICE_ACCOUNT_JSON_BASE64, "base64").toString("utf-8");
+  const credentials = JSON.parse(decoded);
   driveAuth = new google.auth.GoogleAuth({
     credentials,
     scopes: ["https://www.googleapis.com/auth/drive"]
   });
 } catch (err) {
-  console.error("Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:", err.message);
+  console.error("Failed to parse GOOGLE_SERVICE_ACCOUNT_JSON_BASE64:", err.message);
 }
 
 const drive = google.drive({ version: "v3", auth: driveAuth });
