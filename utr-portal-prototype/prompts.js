@@ -1,11 +1,8 @@
 // EDIT THIS FILE to change the participant's video requests.
 // The portal layout does not need to change when prompts are edited.
-
 const PORTAL_CONFIG = {
-  participantName: "Frank",
-  participantId: "demo-participant",
-   // Public backend, deployed on EasyPanel.
-   apiBaseUrl: "https://undertheradarportal-utr-portalbackend.wzdj29.easypanel.host",
+  // Public backend, deployed on EasyPanel.
+  apiBaseUrl: "https://undertheradarportal-utr-portalbackend.wzdj29.easypanel.host",
   maxFileSizeMB: 500,
   prompts: [
     {
