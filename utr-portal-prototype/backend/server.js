@@ -3,9 +3,11 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { Pool } = require("pg");
 
 const app = express();
 const PORT = 3001;
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 app.use(cors());
 app.use(express.json());
@@ -32,6 +34,30 @@ const upload = multer({
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "OK", message: "UTR backend is running" });
+});
+
+app.post("/api/login", async (req, res) => {
+  const { participantId } = req.body;
+  if (!participantId) {
+    return res.status(400).json({ success: false, message: "Login ID required" });
+  }
+  try {
+    const result = await pool.query(
+      "SELECT participant_id, full_name FROM participants WHERE participant_id = $1",
+      [participantId.trim().toLowerCase()]
+    );
+    if (result.rows.length === 0) {
+      return res.status(401).json({ success: false, message: "Login ID not recognized" });
+    }
+    res.json({
+      success: true,
+      participantId: result.rows[0].participant_id,
+      participantName: result.rows[0].full_name
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
 });
 
 app.post("/api/upload", upload.single("video"), (req, res) => {
