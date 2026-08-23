@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Under The Radar — Participant Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">UTR</div>
+        <div>
+          <div class="brand-name">UNDER THE RADAR</div>
+          <div class="brand-sub">Participant Portal</div>
+        </div>
+      </div>
+      <button class="ghost-btn" id="logoutBtn">Log out</button>
+    </header>
+
+    <main class="container">
+      <section class="welcome">
+        <div>
+          <p class="eyebrow">BEHIND THE SCENES</p>
+          <h1>Hi, <span id="participantName">Participant</span> 👋</h1>
+          <p class="muted">Complete each requested video. You won't be able to continue until the current upload is complete.</p>
+        </div>
+        <div class="status-pill"><span class="status-dot"></span><span id="statusText">In progress</span></div>
+      </section>
+
+      <section class="progress-panel">
+        <div class="progress-head">
+          <div><strong>Your progress</strong><span id="progressLabel">0 of 3 videos uploaded</span></div>
+          <strong id="progressPercent">0%</strong>
+        </div>
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+      </section>
+
+      <section class="workspace">
+        <aside class="checklist-panel">
+          <div class="panel-title">Checklist</div>
+          <div id="checklist" class="checklist"></div>
+        </aside>
+
+        <section class="prompt-panel">
+          <div class="step-line"><span id="stepNumber">01</span><span>VIDEO REQUEST</span></div>
+          <h2 id="promptTitle"></h2>
+          <p id="promptDescription" class="prompt-description"></p>
+
+          <div class="instruction-box">
+            <div class="instruction-title">Before you upload</div>
+            <ul id="promptInstructions"></ul>
+          </div>
+
+          <div class="upload-card" id="uploadCard">
+            <input type="file" id="fileInput" accept="video/*" hidden />
+            <div class="upload-icon">↑</div>
+            <h3 id="uploadHeading">Upload your video</h3>
+            <p id="uploadSubheading">MP4 or MOV · Maximum 500 MB</p>
+            <button class="primary-btn" id="chooseBtn">Choose video</button>
+            <div class="file-state" id="fileState"></div>
+          </div>
+
+          <div class="actions">
+            <button class="secondary-btn" id="backBtn">Back</button>
+            <button class="primary-btn next-btn" id="nextBtn" disabled>Continue</button>
+          </div>
+          <p class="locked-note" id="lockedNote">Upload this video to unlock Continue.</p>
+        </section>
+      </section>
+
+      <footer>Under The Radar · Participant submission portal</footer>
+    </main>
+  </div>
+
+  <script src="prompts.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
