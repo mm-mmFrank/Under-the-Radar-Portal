@@ -10,7 +10,18 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="app-shell">
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <img src="assets/utr-logo.png" alt="Under The Radar" class="login-logo" />
+      <h1>Participant Login</h1>
+      <p class="muted">Enter your login ID to access your video portal.</p>
+      <input type="text" id="loginInput" placeholder="e.g. thabo-utr3" autocomplete="off" />
+      <button class="primary-btn" id="loginBtn">Log in</button>
+      <p class="login-error" id="loginError"></p>
+    </div>
+  </div>
+
+  <div class="app-shell" id="appShell" style="display:none">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">UTR</div>
@@ -21,7 +32,6 @@
       </div>
       <button class="ghost-btn" id="logoutBtn">Log out</button>
     </header>
-
     <main class="container">
       <section class="welcome">
         <div>
@@ -31,7 +41,6 @@
         </div>
         <div class="status-pill"><span class="status-dot"></span><span id="statusText">In progress</span></div>
       </section>
-
       <section class="progress-panel">
         <div class="progress-head">
           <div><strong>Your progress</strong><span id="progressLabel">0 of 3 videos uploaded</span></div>
@@ -39,23 +48,19 @@
         </div>
         <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
       </section>
-
       <section class="workspace">
         <aside class="checklist-panel">
           <div class="panel-title">Checklist</div>
           <div id="checklist" class="checklist"></div>
         </aside>
-
         <section class="prompt-panel">
           <div class="step-line"><span id="stepNumber">01</span><span>VIDEO REQUEST</span></div>
           <h2 id="promptTitle"></h2>
           <p id="promptDescription" class="prompt-description"></p>
-
           <div class="instruction-box">
             <div class="instruction-title">Before you upload</div>
             <ul id="promptInstructions"></ul>
           </div>
-
           <div class="upload-card" id="uploadCard">
             <input type="file" id="fileInput" accept="video/*" hidden />
             <div class="upload-icon">↑</div>
@@ -64,7 +69,6 @@
             <button class="primary-btn" id="chooseBtn">Choose video</button>
             <div class="file-state" id="fileState"></div>
           </div>
-
           <div class="actions">
             <button class="secondary-btn" id="backBtn">Back</button>
             <button class="primary-btn next-btn" id="nextBtn" disabled>Continue</button>
@@ -72,11 +76,9 @@
           <p class="locked-note" id="lockedNote">Upload this video to unlock Continue.</p>
         </section>
       </section>
-
       <footer>Under The Radar · Participant submission portal</footer>
     </main>
   </div>
-
   <script src="prompts.js"></script>
   <script src="app.js"></script>
 </body>
