@@ -1,8 +1,56 @@
 const API_BASE = PORTAL_CONFIG.apiBaseUrl;
+const SESSION_KEY = "utr_session";
+const SESSION_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
+function saveSession(participantId, participantName) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify({
+    participantId,
+    participantName,
+    loggedInAt: Date.now()
+  }));
+}
+
+function getValidSession() {
+  const raw = localStorage.getItem(SESSION_KEY);
+  if (!raw) return null;
+  try {
+    const session = JSON.parse(raw);
+    const expired = Date.now() - session.loggedInAt > SESSION_DURATION_MS;
+    if (expired) {
+      localStorage.removeItem(SESSION_KEY);
+      return null;
+    }
+    return session;
+  } catch {
+    localStorage.removeItem(SESSION_KEY);
+    return null;
+  }
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+function enterPortal(participantId, participantName) {
+  PORTAL_CONFIG.participantName = participantName;
+  PORTAL_CONFIG.participantId = participantId;
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("appShell").style.display = "";
+  initPortal();
+}
+
+// On page load, restore a still-valid session instead of forcing re-login.
+(function restoreSessionOnLoad() {
+  const session = getValidSession();
+  if (session) {
+    enterPortal(session.participantId, session.participantName);
+  }
+})();
 
 async function attemptLogin() {
   const input = document.getElementById("loginInput");
   const errorEl = document.getElementById("loginError");
+
   const participantId = input.value.trim();
 
   if (!participantId) {
@@ -23,13 +71,8 @@ async function attemptLogin() {
       return;
     }
 
-    PORTAL_CONFIG.participantName = result.participantName;
-    PORTAL_CONFIG.participantId = result.participantId;
-
-    document.getElementById("loginScreen").style.display = "none";
-    document.getElementById("appShell").style.display = "";
-
-    initPortal();
+    saveSession(result.participantId, result.participantName);
+    enterPortal(result.participantId, result.participantName);
   } catch (err) {
     console.error(err);
     errorEl.textContent = "Something went wrong. Please try again.";
@@ -172,6 +215,7 @@ function initPortal() {
   });
 
   $("logoutBtn").addEventListener("click", () => {
+    clearSession();
     location.reload();
   });
 
