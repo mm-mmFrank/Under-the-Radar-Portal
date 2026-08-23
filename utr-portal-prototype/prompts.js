@@ -4,8 +4,8 @@
 const PORTAL_CONFIG = {
   participantName: "Frank",
   participantId: "demo-participant",
-  // Local backend for testing. Later this becomes your public API address.
-  apiBaseUrl: "http://localhost:3001",
+   // Public backend, deployed on EasyPanel.
+   apiBaseUrl: "https://undertheradarportal-utr-portalbackend.wzdj29.easypanel.host",
   maxFileSizeMB: 500,
   prompts: [
     {
