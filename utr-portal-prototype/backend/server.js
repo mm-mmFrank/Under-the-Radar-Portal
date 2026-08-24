@@ -77,8 +77,10 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype && file.mimetype.startsWith("video/")) cb(null, true);
-    else cb(new Error("Only video files are allowed."));
+    const isVideo = file.mimetype && file.mimetype.startsWith("video/");
+    const isAudio = file.mimetype && file.mimetype.startsWith("audio/");
+    if (isVideo || isAudio) cb(null, true);
+    else cb(new Error("Only video or audio files are allowed."));
   }
 });
 
