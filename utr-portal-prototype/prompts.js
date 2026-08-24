@@ -1,38 +1,47 @@
-// EDIT THIS FILE to change the participant's video requests.
+// EDIT THIS FILE to change the participant's video/audio requests.
 // The portal layout does not need to change when prompts are edited.
+//
+// Each prompt supports an optional "accept" field:
+//   "video" -> only video files allowed for this prompt
+//   "audio" -> only audio files allowed for this prompt
+//   "any"   -> both video and audio allowed (default if omitted)
 const PORTAL_CONFIG = {
   // Public backend, deployed on EasyPanel.
   apiBaseUrl: "https://undertheradarportal-utr-portalbackend.wzdj29.easypanel.host",
   maxFileSizeMB: 500,
   prompts: [
     {
-      id: "bts-arrival",
-      title: "Arrival & First Impressions",
-      description: "Capture a short behind-the-scenes video when you arrive on set. Show us the atmosphere, your first reaction and what is happening around you.",
+      id: "heyshawty-questions",
+      title: "UGC — HeyShawty Questions",
+      description: "Record yourself answering the HeyShawty questions in your own voice and style. Keep it natural, energetic, and true to who you are.",
+      accept: "video",
       instructions: [
+        "Answer each question clearly, in your own words.",
         "Keep the video between 30 and 90 seconds.",
         "Film vertically unless the production team tells you otherwise.",
-        "Make sure the location and people around you are visible where appropriate."
+        "Good lighting and clear sound — no background noise or music."
       ]
     },
     {
-      id: "bts-process",
-      title: "Behind The Process",
-      description: "Show us something interesting happening behind the scenes while your production is underway.",
+      id: "mp3-upload",
+      title: "Full Song Audio",
+      description: "Upload the complete MP3 of your entry song — the original song this submission is for.",
+      accept: "audio",
       instructions: [
-        "Capture a genuine moment rather than a scripted introduction.",
-        "Keep the video between 30 and 90 seconds.",
+        "Upload the full track, not an excerpt.",
+        "MP3 or WAV format.",
+        "Make sure the file plays correctly before uploading."
+      ]
+    },
+    {
+      id: "bts-content",
+      title: "Behind The Scenes Content",
+      description: "Share any behind-the-scenes moments — arriving on set, prepping, in-between takes, or anything that shows what your day looked like.",
+      accept: "video",
+      instructions: [
+        "Capture genuine, unscripted moments.",
+        "Keep individual clips between 30 and 90 seconds.",
         "Avoid filming confidential production information."
-      ]
-    },
-    {
-      id: "bts-reaction",
-      title: "Your Reaction",
-      description: "Record your reaction after completing the day's activity. Tell us what stood out to you and how the experience felt.",
-      instructions: [
-        "Speak clearly and keep the camera steady.",
-        "Keep the video between 30 and 90 seconds.",
-        "Be yourself — this should feel natural and personal."
       ]
     }
   ]
