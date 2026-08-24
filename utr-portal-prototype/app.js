@@ -145,8 +145,8 @@ function initPortal() {
     const file = e.target.files[0];
     if (!file) return;
     const max = cfg.maxFileSizeMB * 1024 * 1024;
-    if (!file.type.startsWith("video/")) {
-      alert("Please choose a video file.");
+    if (!file.type.startsWith("video/") && !file.type.startsWith("audio/")) {
+      alert("Please choose a video or audio file.");
       e.target.value = "";
       return;
     }
