@@ -62,12 +62,13 @@
             <ul id="promptInstructions"></ul>
           </div>
           <div class="upload-card" id="uploadCard">
-            <input type="file" id="fileInput" accept="video/*,audio/*" hidden />
+            <input type="file" id="fileInput" accept="video/*,audio/*" multiple hidden />
             <div class="upload-icon">↑</div>
             <h3 id="uploadHeading">Upload your video</h3>
             <p id="uploadSubheading">MP4 or MOV · Maximum 500 MB</p>
-            <button class="primary-btn" id="chooseBtn">Choose video</button>
+            <button class="primary-btn" id="chooseBtn">Choose file(s)</button>
             <div class="file-state" id="fileState"></div>
+            <ul class="uploaded-files-list" id="uploadedFilesList"></ul>
           </div>
           <div class="actions">
             <button class="secondary-btn" id="backBtn">Back</button>
