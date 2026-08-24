@@ -86,7 +86,7 @@ document.getElementById("loginInput").addEventListener("keypress", (e) => {
 
 function initPortal() {
   const cfg = PORTAL_CONFIG;
-  const uploaded = Array(cfg.prompts.length).fill(null);
+  const uploaded = Array(cfg.prompts.length).fill(null).map(() => []);
   const API_BASE_URL = cfg.apiBaseUrl || "http://localhost:3001";
 
   let current = 0;
@@ -99,15 +99,16 @@ function initPortal() {
     const list = $("checklist");
     list.innerHTML = "";
     cfg.prompts.forEach((prompt, index) => {
+      const done = uploaded[index].length > 0;
       const item = document.createElement("button");
-      item.className = "check-item" + (index === current ? " active" : "") + (uploaded[index] ? " complete" : "");
+      item.className = "check-item" + (index === current ? " active" : "") + (done ? " complete" : "");
       item.innerHTML = `
-        <span class="check-circle">${uploaded[index] ? "✓" : index + 1}</span>
-        <span class="check-copy"><strong>${String(index + 1).padStart(2, "0")} · ${prompt.title}</strong><small>${uploaded[index] ? "Uploaded" : "Not uploaded"}</small></span>
+        <span class="check-circle">${done ? "✓" : index + 1}</span>
+        <span class="check-copy"><strong>${String(index + 1).padStart(2, "0")} · ${prompt.title}</strong><small>${done ? uploaded[index].length + (uploaded[index].length === 1 ? " file uploaded" : " files uploaded") : "Not uploaded"}</small></span>
       `;
       item.addEventListener("click", () => {
         // Allow going back to completed steps; future incomplete steps stay locked.
-        if (index <= current || uploaded.slice(0, index).every(Boolean)) {
+        if (index <= current || uploaded.slice(0, index).every(list => list.length > 0)) {
           current = index;
           render();
         }
@@ -116,94 +117,140 @@ function initPortal() {
     });
   }
 
+  function acceptAttrFor(prompt) {
+    if (prompt.accept === "video") return "video/*";
+    if (prompt.accept === "audio") return "audio/*";
+    return "video/*,audio/*";
+  }
+
   function render() {
     const prompt = cfg.prompts[current];
     $("stepNumber").textContent = String(current + 1).padStart(2, "0");
     $("promptTitle").textContent = prompt.title;
     $("promptDescription").textContent = prompt.description;
     $("promptInstructions").innerHTML = prompt.instructions.map(x => `<li>${x}</li>`).join("");
+    $("fileInput").setAttribute("accept", acceptAttrFor(prompt));
 
-    const file = uploaded[current];
-    $("nextBtn").disabled = !file;
-    $("lockedNote").textContent = file ? "Ready to continue." : "Upload this video to unlock Continue.";
-    $("uploadHeading").textContent = file ? "Video uploaded" : "Upload your video";
-    $("uploadSubheading").textContent = file ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB` : `MP4 or MOV · Maximum ${cfg.maxFileSizeMB} MB`;
-    $("fileState").textContent = file ? "✓ Upload complete" : "";
+    const files = uploaded[current];
+    const kindLabel = prompt.accept === "audio" ? "audio" : "video";
+    $("nextBtn").disabled = files.length === 0;
+    $("lockedNote").textContent = files.length > 0 ? "Ready to continue." : `Upload at least one ${kindLabel} to unlock Continue.`;
+    $("uploadHeading").textContent = files.length > 0 ? `${files.length} file${files.length === 1 ? "" : "s"} uploaded` : `Upload your ${kindLabel}`;
+    $("uploadSubheading").textContent = prompt.accept === "audio"
+      ? `MP3 or WAV · Maximum ${cfg.maxFileSizeMB} MB each · Add as many as you like`
+      : `MP4 or MOV · Maximum ${cfg.maxFileSizeMB} MB each · Add as many as you like`;
+    $("chooseBtn").textContent = files.length > 0 ? "Add another file" : "Choose file(s)";
 
-    const count = uploaded.filter(Boolean).length;
-    const pct = Math.round((count / cfg.prompts.length) * 100);
+    const listEl = $("uploadedFilesList");
+    listEl.innerHTML = files.map((f, i) => `
+      <li class="uploaded-file-row">
+        <span class="uploaded-file-name">${f.name} · ${(f.size / 1024 / 1024).toFixed(1)} MB</span>
+        <button type="button" class="remove-file-btn" data-index="${i}" aria-label="Remove file">✕</button>
+      </li>
+    `).join("");
+    listEl.querySelectorAll(".remove-file-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const idx = parseInt(btn.getAttribute("data-index"), 10);
+        uploaded[current].splice(idx, 1);
+        render();
+      });
+    });
+
+    $("fileState").textContent = "";
+
+    const completedSteps = uploaded.filter(list => list.length > 0).length;
+    const pct = Math.round((completedSteps / cfg.prompts.length) * 100);
     $("progressFill").style.width = pct + "%";
     $("progressPercent").textContent = pct + "%";
-    $("progressLabel").textContent = `${count} of ${cfg.prompts.length} videos uploaded`;
-    $("statusText").textContent = count === cfg.prompts.length ? "Complete" : "In progress";
+    $("progressLabel").textContent = `${completedSteps} of ${cfg.prompts.length} steps completed`;
+    $("statusText").textContent = completedSteps === cfg.prompts.length ? "Complete" : "In progress";
     renderChecklist();
   }
 
   $("chooseBtn").addEventListener("click", () => $("fileInput").click());
 
   $("fileInput").addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const selectedFiles = Array.from(e.target.files || []);
+    if (selectedFiles.length === 0) return;
+
     const max = cfg.maxFileSizeMB * 1024 * 1024;
-    if (!file.type.startsWith("video/") && !file.type.startsWith("audio/")) {
-      alert("Please choose a video or audio file.");
-      e.target.value = "";
-      return;
-    }
-    if (file.size > max) {
-      alert(`This video is larger than ${cfg.maxFileSizeMB} MB.`);
-      e.target.value = "";
-      return;
-    }
     const prompt = cfg.prompts[current];
-    const formData = new FormData();
-    formData.append("video", file);
-    formData.append("promptId", prompt.id);
-    formData.append("participantId", cfg.participantId || "demo-participant");
+    const wantsVideo = prompt.accept === "video";
+    const wantsAudio = prompt.accept === "audio";
 
     const chooseButton = $("chooseBtn");
     chooseButton.disabled = true;
-    chooseButton.textContent = "Uploading…";
-    $("fileState").textContent = "Uploading video…";
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/upload`, {
-        method: "POST",
-        body: formData
-      });
+    let uploadedCount = 0;
+    for (const file of selectedFiles) {
+      const isVideo = file.type.startsWith("video/");
+      const isAudio = file.type.startsWith("audio/");
 
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Upload failed.");
+      if (wantsVideo && !isVideo) {
+        alert(`Skipped "${file.name}" — please choose a video file for this step.`);
+        continue;
+      }
+      if (wantsAudio && !isAudio) {
+        alert(`Skipped "${file.name}" — please choose an audio file (MP3 or WAV) for this step.`);
+        continue;
+      }
+      if (!wantsVideo && !wantsAudio && !isVideo && !isAudio) {
+        alert(`Skipped "${file.name}" — please choose a video or audio file.`);
+        continue;
+      }
+      if (file.size > max) {
+        alert(`Skipped "${file.name}" — larger than ${cfg.maxFileSizeMB} MB.`);
+        continue;
       }
 
-      uploaded[current] = {
-        name: file.name,
-        size: file.size,
-        filename: result.filename,
-        url: result.url || null
-      };
-      render();
-    } catch (error) {
-      console.error(error);
-      alert(`Upload failed: ${error.message}`);
-      $("fileState").textContent = "Upload failed. Please try again.";
-    } finally {
-      chooseButton.disabled = false;
-      chooseButton.textContent = "Choose video";
-      e.target.value = "";
+      chooseButton.textContent = `Uploading ${uploadedCount + 1} of ${selectedFiles.length}…`;
+      $("fileState").textContent = `Uploading "${file.name}"…`;
+
+      const formData = new FormData();
+      formData.append("video", file);
+      formData.append("promptId", prompt.id);
+      formData.append("participantId", cfg.participantId || "demo-participant");
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/upload`, {
+          method: "POST",
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.message || "Upload failed.");
+        }
+
+        uploaded[current].push({
+          name: file.name,
+          size: file.size,
+          filename: result.filename,
+          url: result.url || null
+        });
+        uploadedCount++;
+        render();
+      } catch (error) {
+        console.error(error);
+        alert(`Upload failed for "${file.name}": ${error.message}`);
+      }
     }
+
+    chooseButton.disabled = false;
+    $("fileState").textContent = "";
+    e.target.value = "";
+    render();
   });
 
   $("nextBtn").addEventListener("click", () => {
-    if (!uploaded[current]) return;
+    if (uploaded[current].length === 0) return;
     if (current < cfg.prompts.length - 1) {
       current++;
       render();
     } else {
       $("statusText").textContent = "Complete";
-      alert("All requested videos are complete in this prototype.");
+      alert("All requested uploads are complete in this prototype.");
     }
   });
 
