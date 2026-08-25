@@ -1,10 +1,9 @@
 const express = require("express");
 const cors = require("cors");
-const multer = require("multer");
 const path = require("path");
 const { Pool } = require("pg");
 const { google } = require("googleapis");
-const { Readable } = require("stream");
+const Busboy = require("busboy");
 
 const app = express();
 const PORT = 3001;
@@ -84,20 +83,7 @@ function datedFilename(originalName) {
   return `${datePart}_${timePart}_${sanitizeFilename(base)}${ext}`;
 }
 
-// ---------------------------------------------------------------------
-// Multer: hold the file in memory instead of writing to local disk,
-// since it's going straight to Drive.
-// ---------------------------------------------------------------------
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 500 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const isVideo = file.mimetype && file.mimetype.startsWith("video/");
-    const isAudio = file.mimetype && file.mimetype.startsWith("audio/");
-    if (isVideo || isAudio) cb(null, true);
-    else cb(new Error("Only video or audio files are allowed."));
-  }
-});
+const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "OK", message: "UTR backend is running" });
@@ -127,53 +113,123 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-app.post("/api/upload", upload.single("video"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: "No file was uploaded" });
+// ---------------------------------------------------------------------
+// Streaming upload — the file is piped directly to Google Drive as it
+// arrives from the client, instead of being fully buffered in memory
+// first. This roughly halves total wait time on large files and avoids
+// putting the whole file in RAM.
+//
+// IMPORTANT: the frontend must send the "participantId" and "category"
+// fields BEFORE the "video" file field in the FormData, since we need
+// to know the destination folder before the file stream starts.
+// ---------------------------------------------------------------------
+app.post("/api/upload", (req, res) => {
+  const busboy = Busboy({
+    headers: req.headers,
+    limits: { fileSize: MAX_FILE_SIZE }
+  });
+
+  let participantId = "unknown-participant";
+  let category = "content";
+  let responded = false;
+  let fileHandled = false;
+  let uploadPromise = null;
+
+  function sendOnce(status, body) {
+    if (responded) return;
+    responded = true;
+    res.status(status).json(body);
   }
 
-  const participantId = req.body.participantId || "unknown-participant";
-  const category = req.body.category || req.body.promptId || "content";
-  const categoryFolderName = CATEGORY_FOLDER_NAMES[category] || "Content";
+  busboy.on("field", (name, value) => {
+    if (name === "participantId") participantId = value;
+    if (name === "category") category = value;
+    if (name === "promptId" && !category) category = value; // backward compatibility
+  });
 
-  try {
-    const participantFolderId = await getOrCreateFolder(DRIVE_ROOT_FOLDER_ID, participantId);
-    const categoryFolderId = await getOrCreateFolder(participantFolderId, categoryFolderName);
+  busboy.on("file", (fieldname, fileStream, info) => {
+    fileHandled = true;
+    const { filename, mimeType } = info;
 
-    const finalName = datedFilename(req.file.originalname);
+    const isVideo = mimeType && mimeType.startsWith("video/");
+    const isAudio = mimeType && mimeType.startsWith("audio/");
 
-    const driveRes = await drive.files.create({
-      requestBody: {
-        name: finalName,
-        parents: [categoryFolderId]
-      },
-      media: {
-        mimeType: req.file.mimetype,
-        body: Readable.from(req.file.buffer)
-      },
-      fields: "id, webViewLink"
+    if (!isVideo && !isAudio) {
+      fileStream.resume(); // drain the stream so busboy can finish
+      sendOnce(400, { success: false, message: "Only video or audio files are allowed." });
+      return;
+    }
+
+    let tooLarge = false;
+    fileStream.on("limit", () => {
+      tooLarge = true;
+      fileStream.resume();
+      sendOnce(400, { success: false, message: "File is larger than the 500 MB limit." });
     });
 
-    console.log("File uploaded to Drive:", {
-      participantId,
-      category: categoryFolderName,
-      driveFileId: driveRes.data.id,
-      finalName
-    });
+    const categoryFolderName = CATEGORY_FOLDER_NAMES[category] || "Content";
+    const finalName = datedFilename(filename);
 
-    res.json({
-      success: true,
-      message: "File uploaded successfully",
-      filename: finalName,
-      originalName: req.file.originalname,
-      size: req.file.size,
-      driveFileId: driveRes.data.id,
-      url: driveRes.data.webViewLink || null
-    });
-  } catch (err) {
-    console.error("Drive upload failed:", err);
-    res.status(500).json({ success: false, message: "Upload to Drive failed" });
-  }
+    uploadPromise = (async () => {
+      if (tooLarge) return null;
+
+      const participantFolderId = await getOrCreateFolder(DRIVE_ROOT_FOLDER_ID, participantId);
+      const categoryFolderId = await getOrCreateFolder(participantFolderId, categoryFolderName);
+
+      const driveRes = await drive.files.create({
+        requestBody: {
+          name: finalName,
+          parents: [categoryFolderId]
+        },
+        media: {
+          mimeType,
+          body: fileStream
+        },
+        fields: "id, webViewLink"
+      });
+
+      return { driveRes, finalName, originalName: filename };
+    })();
+  });
+
+  busboy.on("finish", async () => {
+    if (!fileHandled) {
+      sendOnce(400, { success: false, message: "No file was uploaded" });
+      return;
+    }
+    if (responded) return; // already responded (e.g. bad file type / too large)
+
+    try {
+      const result = await uploadPromise;
+      if (!result) return; // already handled by the "limit" branch
+
+      console.log("File uploaded to Drive:", {
+        participantId,
+        category,
+        driveFileId: result.driveRes.data.id,
+        finalName: result.finalName
+      });
+
+      sendOnce(200, {
+        success: true,
+        message: "File uploaded successfully",
+        filename: result.finalName,
+        originalName: result.originalName,
+        driveFileId: result.driveRes.data.id,
+        url: result.driveRes.data.webViewLink || null
+      });
+    } catch (err) {
+      console.error("Drive upload failed:", err);
+      sendOnce(500, { success: false, message: "Upload to Drive failed" });
+    }
+  });
+
+  busboy.on("error", (err) => {
+    console.error("Busboy error:", err);
+    sendOnce(400, { success: false, message: "Upload failed" });
+  });
+
+  req.pipe(busboy);
 });
 
 app.use((err, req, res, next) => {
