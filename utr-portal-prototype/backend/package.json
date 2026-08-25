@@ -7,10 +7,10 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "busboy": "^1.6.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "googleapis": "^144.0.0",
-    "multer": "^2.0.2",
     "pg": "^8.23.0"
   }
 }
