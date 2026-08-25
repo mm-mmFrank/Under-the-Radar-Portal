@@ -209,10 +209,10 @@ function initPortal() {
       refs.fileState.textContent = `Uploading "${file.name}"…`;
 
       const formData = new FormData();
-      formData.append("video", file);
-      formData.append("promptId", category.id);
-      formData.append("category", category.id);
       formData.append("participantId", cfg.participantId || "demo-participant");
+      formData.append("category", category.id);
+      formData.append("promptId", category.id);
+      formData.append("video", file);
 
       try {
         const response = await fetch(`${API_BASE_URL}/api/upload`, {
