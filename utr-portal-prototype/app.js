@@ -50,7 +50,6 @@ function enterPortal(participantId, participantName) {
 async function attemptLogin() {
   const input = document.getElementById("loginInput");
   const errorEl = document.getElementById("loginError");
-
   const participantId = input.value.trim();
 
   if (!participantId) {
@@ -86,116 +85,119 @@ document.getElementById("loginInput").addEventListener("keypress", (e) => {
 
 function initPortal() {
   const cfg = PORTAL_CONFIG;
-  const uploaded = Array(cfg.prompts.length).fill(null).map(() => []);
   const API_BASE_URL = cfg.apiBaseUrl || "http://localhost:3001";
-
-  let current = 0;
 
   const $ = (id) => document.getElementById(id);
 
+  // uploaded[categoryId] = array of { name, size, filename, url }
+  const uploaded = {};
+  cfg.categories.forEach(cat => { uploaded[cat.id] = []; });
+
   $("participantName").textContent = cfg.participantName;
 
-  function renderChecklist() {
-    const list = $("checklist");
-    list.innerHTML = "";
-    cfg.prompts.forEach((prompt, index) => {
-      const done = uploaded[index].length > 0;
-      const item = document.createElement("button");
-      item.className = "check-item" + (index === current ? " active" : "") + (done ? " complete" : "");
-      item.innerHTML = `
-        <span class="check-circle">${done ? "✓" : index + 1}</span>
-        <span class="check-copy"><strong>${String(index + 1).padStart(2, "0")} · ${prompt.title}</strong><small>${done ? uploaded[index].length + (uploaded[index].length === 1 ? " file uploaded" : " files uploaded") : "Not uploaded"}</small></span>
-      `;
-      item.addEventListener("click", () => {
-        // Allow going back to completed steps; future incomplete steps stay locked.
-        if (index <= current || uploaded.slice(0, index).every(list => list.length > 0)) {
-          current = index;
-          render();
-        }
-      });
-      list.appendChild(item);
+  const grid = $("categoriesGrid");
+  const template = $("categoryCardTemplate");
+  grid.innerHTML = "";
+
+  const cardRefs = {}; // categoryId -> { root, countEl, fileInput, chooseBtn, fileState, listEl }
+
+  cfg.categories.forEach((category) => {
+    const node = template.content.cloneNode(true);
+    const root = node.querySelector(".category-card");
+    root.dataset.categoryId = category.id;
+
+    node.querySelector(".category-title").textContent = category.title;
+    node.querySelector(".category-description").textContent = category.description;
+    node.querySelector(".category-instructions").innerHTML =
+      category.instructions.map(x => `<li>${x}</li>`).join("");
+
+    const fileInput = node.querySelector(".category-file-input");
+    fileInput.setAttribute("accept", category.accept === "audio" ? "audio/*" : "video/*");
+
+    const hint = node.querySelector(".category-hint");
+    hint.textContent = category.accept === "audio"
+      ? `MP3 or WAV · Maximum ${cfg.maxFileSizeMB} MB each`
+      : `MP4 or MOV · Maximum ${cfg.maxFileSizeMB} MB each`;
+
+    grid.appendChild(node);
+
+    cardRefs[category.id] = {
+      root: grid.querySelector(`[data-category-id="${category.id}"]`),
+    };
+  });
+
+  // Re-query cloned elements now that they're attached to the DOM
+  cfg.categories.forEach((category) => {
+    const root = cardRefs[category.id].root;
+    cardRefs[category.id] = {
+      root,
+      countEl: root.querySelector(".category-count"),
+      fileInput: root.querySelector(".category-file-input"),
+      chooseBtn: root.querySelector(".category-choose-btn"),
+      fileState: root.querySelector(".file-state"),
+      listEl: root.querySelector(".uploaded-files-list")
+    };
+
+    cardRefs[category.id].chooseBtn.addEventListener("click", () => {
+      cardRefs[category.id].fileInput.click();
     });
-  }
 
-  function acceptAttrFor(prompt) {
-    if (prompt.accept === "video") return "video/*";
-    if (prompt.accept === "audio") return "audio/*";
-    return "video/*,audio/*";
-  }
+    cardRefs[category.id].fileInput.addEventListener("change", (e) => {
+      handleFilesSelected(category, Array.from(e.target.files || []));
+      e.target.value = "";
+    });
+  });
 
-  function render() {
-    const prompt = cfg.prompts[current];
-    $("stepNumber").textContent = String(current + 1).padStart(2, "0");
-    $("promptTitle").textContent = prompt.title;
-    $("promptDescription").textContent = prompt.description;
-    $("promptInstructions").innerHTML = prompt.instructions.map(x => `<li>${x}</li>`).join("");
-    $("fileInput").setAttribute("accept", acceptAttrFor(prompt));
+  function renderCategory(categoryId) {
+    const files = uploaded[categoryId];
+    const refs = cardRefs[categoryId];
 
-    const files = uploaded[current];
-    const kindLabel = prompt.accept === "audio" ? "audio" : "video";
-    $("nextBtn").disabled = files.length === 0;
-    $("lockedNote").textContent = files.length > 0 ? "Ready to continue." : `Upload at least one ${kindLabel} to unlock Continue.`;
-    $("uploadHeading").textContent = files.length > 0 ? `${files.length} file${files.length === 1 ? "" : "s"} uploaded` : `Upload your ${kindLabel}`;
-    $("uploadSubheading").textContent = prompt.accept === "audio"
-      ? `MP3 or WAV · Maximum ${cfg.maxFileSizeMB} MB each · Add as many as you like`
-      : `MP4 or MOV · Maximum ${cfg.maxFileSizeMB} MB each · Add as many as you like`;
-    $("chooseBtn").textContent = files.length > 0 ? "Add another file" : "Choose file(s)";
+    refs.countEl.textContent = files.length === 1 ? "1 file uploaded" : `${files.length} files uploaded`;
+    refs.root.classList.toggle("has-files", files.length > 0);
 
-    const listEl = $("uploadedFilesList");
-    listEl.innerHTML = files.map((f, i) => `
+    refs.listEl.innerHTML = files.map((f, i) => `
       <li class="uploaded-file-row">
         <span class="uploaded-file-name">${f.name} · ${(f.size / 1024 / 1024).toFixed(1)} MB</span>
         <button type="button" class="remove-file-btn" data-index="${i}" aria-label="Remove file">✕</button>
       </li>
     `).join("");
-    listEl.querySelectorAll(".remove-file-btn").forEach(btn => {
+
+    refs.listEl.querySelectorAll(".remove-file-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const idx = parseInt(btn.getAttribute("data-index"), 10);
-        uploaded[current].splice(idx, 1);
-        render();
+        uploaded[categoryId].splice(idx, 1);
+        renderCategory(categoryId);
+        renderSummary();
       });
     });
-
-    $("fileState").textContent = "";
-
-    const completedSteps = uploaded.filter(list => list.length > 0).length;
-    const pct = Math.round((completedSteps / cfg.prompts.length) * 100);
-    $("progressFill").style.width = pct + "%";
-    $("progressPercent").textContent = pct + "%";
-    $("progressLabel").textContent = `${completedSteps} of ${cfg.prompts.length} steps completed`;
-    $("statusText").textContent = completedSteps === cfg.prompts.length ? "Complete" : "In progress";
-    renderChecklist();
   }
 
-  $("chooseBtn").addEventListener("click", () => $("fileInput").click());
+  function renderSummary() {
+    const total = Object.values(uploaded).reduce((sum, list) => sum + list.length, 0);
+    $("statusSummary").textContent = total === 1 ? "1 file uploaded" : `${total} files uploaded`;
+  }
 
-  $("fileInput").addEventListener("change", async (e) => {
-    const selectedFiles = Array.from(e.target.files || []);
-    if (selectedFiles.length === 0) return;
+  async function handleFilesSelected(category, files) {
+    if (files.length === 0) return;
 
     const max = cfg.maxFileSizeMB * 1024 * 1024;
-    const prompt = cfg.prompts[current];
-    const wantsVideo = prompt.accept === "video";
-    const wantsAudio = prompt.accept === "audio";
+    const refs = cardRefs[category.id];
+    const wantsVideo = category.accept === "video";
+    const wantsAudio = category.accept === "audio";
 
-    const chooseButton = $("chooseBtn");
-    chooseButton.disabled = true;
-
+    refs.chooseBtn.disabled = true;
     let uploadedCount = 0;
-    for (const file of selectedFiles) {
+
+    for (const file of files) {
       const isVideo = file.type.startsWith("video/");
       const isAudio = file.type.startsWith("audio/");
 
       if (wantsVideo && !isVideo) {
-        alert(`Skipped "${file.name}" — please choose a video file for this step.`);
+        alert(`Skipped "${file.name}" — please choose a video file for ${category.title}.`);
         continue;
       }
       if (wantsAudio && !isAudio) {
-        alert(`Skipped "${file.name}" — please choose an audio file (MP3 or WAV) for this step.`);
-        continue;
-      }
-      if (!wantsVideo && !wantsAudio && !isVideo && !isAudio) {
-        alert(`Skipped "${file.name}" — please choose a video or audio file.`);
+        alert(`Skipped "${file.name}" — please choose an audio file (MP3 or WAV) for ${category.title}.`);
         continue;
       }
       if (file.size > max) {
@@ -203,12 +205,13 @@ function initPortal() {
         continue;
       }
 
-      chooseButton.textContent = `Uploading ${uploadedCount + 1} of ${selectedFiles.length}…`;
-      $("fileState").textContent = `Uploading "${file.name}"…`;
+      refs.chooseBtn.textContent = `Uploading ${uploadedCount + 1} of ${files.length}…`;
+      refs.fileState.textContent = `Uploading "${file.name}"…`;
 
       const formData = new FormData();
       formData.append("video", file);
-      formData.append("promptId", prompt.id);
+      formData.append("promptId", category.id);
+      formData.append("category", category.id);
       formData.append("participantId", cfg.participantId || "demo-participant");
 
       try {
@@ -223,48 +226,31 @@ function initPortal() {
           throw new Error(result.message || "Upload failed.");
         }
 
-        uploaded[current].push({
+        uploaded[category.id].push({
           name: file.name,
           size: file.size,
           filename: result.filename,
           url: result.url || null
         });
         uploadedCount++;
-        render();
+        renderCategory(category.id);
+        renderSummary();
       } catch (error) {
         console.error(error);
         alert(`Upload failed for "${file.name}": ${error.message}`);
       }
     }
 
-    chooseButton.disabled = false;
-    $("fileState").textContent = "";
-    e.target.value = "";
-    render();
-  });
-
-  $("nextBtn").addEventListener("click", () => {
-    if (uploaded[current].length === 0) return;
-    if (current < cfg.prompts.length - 1) {
-      current++;
-      render();
-    } else {
-      $("statusText").textContent = "Complete";
-      alert("All requested uploads are complete in this prototype.");
-    }
-  });
-
-  $("backBtn").addEventListener("click", () => {
-    if (current > 0) {
-      current--;
-      render();
-    }
-  });
+    refs.chooseBtn.disabled = false;
+    refs.chooseBtn.textContent = "Add more files";
+    refs.fileState.textContent = "";
+  }
 
   $("logoutBtn").addEventListener("click", () => {
     clearSession();
     location.reload();
   });
 
-  render();
+  cfg.categories.forEach(category => renderCategory(category.id));
+  renderSummary();
 }
