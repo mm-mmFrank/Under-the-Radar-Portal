@@ -14,12 +14,10 @@ app.use(cors());
 app.use(express.json());
 
 // ---------------------------------------------------------------------
-// Google Drive setup
-// GOOGLE_SERVICE_ACCOUNT_JSON must contain the full contents of the
-// downloaded service account JSON key, pasted as a single-line env var.
-// DRIVE_ROOT_FOLDER_ID is the folder shared with that service account.
+// Google Drive setup — authenticated as a real Google account via OAuth2
+// (not a service account, which has no storage quota of its own).
 // ---------------------------------------------------------------------
-const DRIVE_ROOT_FOLDER_ID = process.env.DRIVE_ROOT_FOLDER_ID || "1R90XPNM35sHaLLHuXtO5U5Qh6FsPXf5H";
+const DRIVE_ROOT_FOLDER_ID = process.env.DRIVE_ROOT_FOLDER_ID;
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_OAUTH_CLIENT_ID,
@@ -31,42 +29,59 @@ oauth2Client.setCredentials({
 
 const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-// Cache of participantId -> their Drive subfolder ID, so we don't
-// search/create it on every single upload within the same process lifetime.
+// Cache of "parentId::folderName" -> folder ID, so we don't search/create
+// the same folder repeatedly within the same process lifetime.
 const folderCache = new Map();
 
-async function getOrCreateParticipantFolder(participantId) {
-  if (folderCache.has(participantId)) {
-    return folderCache.get(participantId);
+async function getOrCreateFolder(parentId, folderName) {
+  const cacheKey = `${parentId}::${folderName}`;
+  if (folderCache.has(cacheKey)) {
+    return folderCache.get(cacheKey);
   }
 
-  // Look for an existing subfolder with this name inside the root folder.
-  const safeName = participantId.replace(/'/g, "\\'");
+  const safeName = folderName.replace(/'/g, "\\'");
   const searchRes = await drive.files.list({
-    q: `'${DRIVE_ROOT_FOLDER_ID}' in parents and name = '${safeName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    q: `'${parentId}' in parents and name = '${safeName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: "files(id, name)",
     spaces: "drive"
   });
 
   if (searchRes.data.files && searchRes.data.files.length > 0) {
     const folderId = searchRes.data.files[0].id;
-    folderCache.set(participantId, folderId);
+    folderCache.set(cacheKey, folderId);
     return folderId;
   }
 
-  // Not found — create it.
   const createRes = await drive.files.create({
     requestBody: {
-      name: participantId,
+      name: folderName,
       mimeType: "application/vnd.google-apps.folder",
-      parents: [DRIVE_ROOT_FOLDER_ID]
+      parents: [parentId]
     },
     fields: "id"
   });
 
   const folderId = createRes.data.id;
-  folderCache.set(participantId, folderId);
+  folderCache.set(cacheKey, folderId);
   return folderId;
+}
+
+const CATEGORY_FOLDER_NAMES = {
+  content: "Content",
+  music: "Music"
+};
+
+function sanitizeFilename(name) {
+  return name.replace(/[^a-zA-Z0-9._-]+/g, "-");
+}
+
+function datedFilename(originalName) {
+  const now = new Date();
+  const datePart = now.toISOString().slice(0, 10);            // YYYY-MM-DD
+  const timePart = now.toISOString().slice(11, 19).replace(/:/g, "-"); // HH-MM-SS
+  const ext = path.extname(originalName);
+  const base = path.basename(originalName, ext);
+  return `${datePart}_${timePart}_${sanitizeFilename(base)}${ext}`;
 }
 
 // ---------------------------------------------------------------------
@@ -114,21 +129,23 @@ app.post("/api/login", async (req, res) => {
 
 app.post("/api/upload", upload.single("video"), async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ success: false, message: "No video was uploaded" });
+    return res.status(400).json({ success: false, message: "No file was uploaded" });
   }
 
   const participantId = req.body.participantId || "unknown-participant";
-  const promptId = req.body.promptId || "unspecified-prompt";
+  const category = req.body.category || req.body.promptId || "content";
+  const categoryFolderName = CATEGORY_FOLDER_NAMES[category] || "Content";
 
   try {
-    const folderId = await getOrCreateParticipantFolder(participantId);
+    const participantFolderId = await getOrCreateFolder(DRIVE_ROOT_FOLDER_ID, participantId);
+    const categoryFolderId = await getOrCreateFolder(participantFolderId, categoryFolderName);
 
-    const uniqueName = `${promptId}-${Date.now()}${path.extname(req.file.originalname)}`;
+    const finalName = datedFilename(req.file.originalname);
 
     const driveRes = await drive.files.create({
       requestBody: {
-        name: uniqueName,
-        parents: [folderId]
+        name: finalName,
+        parents: [categoryFolderId]
       },
       media: {
         mimeType: req.file.mimetype,
@@ -137,16 +154,17 @@ app.post("/api/upload", upload.single("video"), async (req, res) => {
       fields: "id, webViewLink"
     });
 
-    console.log("Video uploaded to Drive:", {
+    console.log("File uploaded to Drive:", {
       participantId,
-      promptId,
-      driveFileId: driveRes.data.id
+      category: categoryFolderName,
+      driveFileId: driveRes.data.id,
+      finalName
     });
 
     res.json({
       success: true,
-      message: "Video uploaded successfully",
-      filename: uniqueName,
+      message: "File uploaded successfully",
+      filename: finalName,
       originalName: req.file.originalname,
       size: req.file.size,
       driveFileId: driveRes.data.id,
