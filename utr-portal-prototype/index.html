@@ -37,49 +37,42 @@
         <div>
           <p class="eyebrow">BEHIND THE SCENES</p>
           <h1>Hi, <span id="participantName">Participant</span> 👋</h1>
-          <p class="muted">Complete each requested video. You won't be able to continue until the current upload is complete.</p>
+          <p class="muted">Upload your content and music below. Add as many files as you like to each section.</p>
         </div>
-        <div class="status-pill"><span class="status-dot"></span><span id="statusText">In progress</span></div>
+        <div class="status-pill"><span class="status-dot"></span><span id="statusSummary">0 files uploaded</span></div>
       </section>
-      <section class="progress-panel">
-        <div class="progress-head">
-          <div><strong>Your progress</strong><span id="progressLabel">0 of 3 videos uploaded</span></div>
-          <strong id="progressPercent">0%</strong>
-        </div>
-        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+
+      <section class="categories-grid" id="categoriesGrid">
+        <!-- Category cards are rendered here by app.js -->
       </section>
-      <section class="workspace">
-        <aside class="checklist-panel">
-          <div class="panel-title">Checklist</div>
-          <div id="checklist" class="checklist"></div>
-        </aside>
-        <section class="prompt-panel">
-          <div class="step-line"><span id="stepNumber">01</span><span>VIDEO REQUEST</span></div>
-          <h2 id="promptTitle"></h2>
-          <p id="promptDescription" class="prompt-description"></p>
-          <div class="instruction-box">
-            <div class="instruction-title">Before you upload</div>
-            <ul id="promptInstructions"></ul>
-          </div>
-          <div class="upload-card" id="uploadCard">
-            <input type="file" id="fileInput" accept="video/*,audio/*" multiple hidden />
-            <div class="upload-icon">↑</div>
-            <h3 id="uploadHeading">Upload your video</h3>
-            <p id="uploadSubheading">MP4 or MOV · Maximum 500 MB</p>
-            <button class="primary-btn" id="chooseBtn">Choose file(s)</button>
-            <div class="file-state" id="fileState"></div>
-            <ul class="uploaded-files-list" id="uploadedFilesList"></ul>
-          </div>
-          <div class="actions">
-            <button class="secondary-btn" id="backBtn">Back</button>
-            <button class="primary-btn next-btn" id="nextBtn" disabled>Continue</button>
-          </div>
-          <p class="locked-note" id="lockedNote">Upload this video to unlock Continue.</p>
-        </section>
-      </section>
+
       <footer>Under The Radar · Participant submission portal</footer>
     </main>
   </div>
+
+  <!-- Template for one category card, cloned per category by app.js -->
+  <template id="categoryCardTemplate">
+    <article class="category-card">
+      <div class="category-head">
+        <h2 class="category-title"></h2>
+        <span class="category-count"></span>
+      </div>
+      <p class="category-description"></p>
+      <div class="instruction-box">
+        <div class="instruction-title">Before you upload</div>
+        <ul class="category-instructions"></ul>
+      </div>
+      <div class="upload-zone">
+        <input type="file" class="category-file-input" multiple hidden />
+        <div class="upload-icon">↑</div>
+        <button class="primary-btn category-choose-btn">Choose file(s)</button>
+        <p class="category-hint"></p>
+        <div class="file-state"></div>
+      </div>
+      <ul class="uploaded-files-list"></ul>
+    </article>
+  </template>
+
   <script src="prompts.js"></script>
   <script src="app.js"></script>
 </body>
