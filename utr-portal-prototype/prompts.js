@@ -4,7 +4,7 @@
 const PORTAL_CONFIG = {
   // Public backend, deployed on EasyPanel.
   apiBaseUrl: "https://undertheradarportal-utr-portalbackend.wzdj29.easypanel.host",
-  maxFileSizeMB: 500,
+  maxFileSizeMB: 2000,
   categories: [
     {
       id: "content",
