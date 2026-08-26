@@ -83,7 +83,7 @@ function datedFilename(originalName) {
   return `${datePart}_${timePart}_${sanitizeFilename(base)}${ext}`;
 }
 
-const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500 MB
+const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GB
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "OK", message: "UTR backend is running" });
